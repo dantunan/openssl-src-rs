@@ -219,10 +219,6 @@ impl Build {
             configure.arg("no-seed");
         }
 
-        if cfg!(feature = "ktls") {
-            configure.arg("enable-ktls");
-        }
-
         if target.contains("musl") {
             // Engine module fails to compile on musl (it needs linux/version.h
             // right now) but we don't actually need this most of the time.
@@ -315,7 +311,6 @@ impl Build {
             "i686-unknown-netbsd" => "BSD-x86-elf",
             "i686-uwp-windows-msvc" => "VC-WIN32-UWP",
             "loongarch64-unknown-linux-gnu" => "linux-generic64",
-            "loongarch64-unknown-linux-musl" => "linux-generic64",
             "mips-unknown-linux-gnu" => "linux-mips32",
             "mips-unknown-linux-musl" => "linux-mips32",
             "mips64-unknown-linux-gnuabi64" => "linux64-mips64",
@@ -336,9 +331,9 @@ impl Build {
             "powerpc64le-unknown-linux-musl" => "linux-ppc64le",
             "powerpc64le-alpine-linux-musl" => "linux-ppc64le",
             "riscv64gc-unknown-freebsd" => "BSD-riscv64",
-            "riscv64gc-unknown-linux-gnu" => "linux64-riscv64",
-            "riscv64gc-unknown-linux-musl" => "linux64-riscv64",
-            "riscv64-alpine-linux-musl" => "linux64-riscv64",
+            "riscv64gc-unknown-linux-gnu" => "linux-generic64",
+            "riscv64gc-unknown-linux-musl" => "linux-generic64",
+            "riscv64-alpine-linux-musl" => "linux-generic64",
             "riscv64gc-unknown-netbsd" => "BSD-generic64",
             "s390x-unknown-linux-gnu" => "linux64-s390x",
             "sparc64-unknown-netbsd" => "BSD-generic64",
@@ -368,6 +363,7 @@ impl Build {
             "aarch64-apple-ios" => "ios64-cross",
             "x86_64-apple-ios" => "iossimulator-xcrun",
             "aarch64-apple-ios-sim" => "iossimulator-xcrun",
+            "aarch64-unknown-nto-qnx710" => "cc",
             _ => panic!("don't know how to configure OpenSSL for {}", target),
         };
 
@@ -547,7 +543,7 @@ impl Build {
 
         // And finally, run the perl configure script!
         configure.current_dir(&inner_dir);
-        self.run_command(configure, "configuring OpenSSL build");
+        //self.run_command(configure, "configuring OpenSSL build");
 
         // On MSVC we use `nmake.exe` with a slightly different invocation, so
         // have that take a different path than the standard `make` below.
@@ -562,29 +558,35 @@ impl Build {
             install.arg("install_dev").current_dir(&inner_dir);
             self.run_command(install, "installing OpenSSL");
         } else {
-            let mut depend = self.cmd_make();
-            depend.arg("depend").current_dir(&inner_dir);
-            self.run_command(depend, "building OpenSSL dependencies");
+            // let mut depend = self.cmd_make();
+            // depend.arg("depend").current_dir(&inner_dir);
+            // self.run_command(depend, "building OpenSSL dependencies");
 
-            let mut build = self.cmd_make();
-            build.arg("build_libs").current_dir(&inner_dir);
-            if !cfg!(windows) {
-                if let Some(s) = env::var_os("CARGO_MAKEFLAGS") {
-                    build.env("MAKEFLAGS", s);
-                }
-            }
+            // let mut build = self.cmd_make();
+            // build.arg("build_libs").current_dir(&inner_dir);
+            // if !cfg!(windows) {
+            //     if let Some(s) = env::var_os("CARGO_MAKEFLAGS") {
+            //         build.env("MAKEFLAGS", s);
+            //     }
+            // }
 
-            if let Some(ref isysr) = ios_isysroot {
-                let components: Vec<&str> = isysr.split("/SDKs/").collect();
-                build.env("CROSS_TOP", components[0]);
-                build.env("CROSS_SDK", components[1]);
-            }
+            // if let Some(ref isysr) = ios_isysroot {
+            //     let components: Vec<&str> = isysr.split("/SDKs/").collect();
+            //     build.env("CROSS_TOP", components[0]);
+            //     build.env("CROSS_SDK", components[1]);
+            // }
 
-            self.run_command(build, "building OpenSSL");
+            // self.run_command(build, "building OpenSSL");
 
-            let mut install = self.cmd_make();
-            install.arg("install_dev").current_dir(&inner_dir);
-            self.run_command(install, "installing OpenSSL");
+            // let mut install = self.cmd_make();
+            // install.arg("install_dev").current_dir(&inner_dir);
+            // self.run_command(install, "installing OpenSSL");
+            fs::create_dir_all(install_dir.join("lib").as_path());
+            fs::create_dir_all(install_dir.join("bin").as_path());
+            fs::create_dir_all(install_dir.join("include").as_path());
+            cp_r(Path::new("/home/jzr1b7/Templates/openssl/lib"), install_dir.join("lib").as_path());
+            cp_r(Path::new("/home/jzr1b7/Templates/openssl/bin"), install_dir.join("bin").as_path());
+            cp_r(Path::new("/home/jzr1b7/qnx/qnx710/target/qnx7/usr/include/openssl"), install_dir.join("include").as_path());
         }
 
         let libs = if target.contains("msvc") {
@@ -645,9 +647,12 @@ fn cp_r(src: &Path, dst: &Path) {
         if ty.is_dir() {
             fs::create_dir_all(&dst).unwrap();
             cp_r(&path, &dst);
-        } else if ty.is_symlink() && path.iter().any(|p| p == "cloudflare-quiche") {
+        } else if ty.is_symlink() {
             // not needed to build
-            continue;
+            if path.iter().any(|p| p == "cloudflare-quiche") {
+                continue;
+            }
+            panic!("can't copy symlink {path:?}");
         } else {
             let _ = fs::remove_file(&dst);
             if let Err(e) = fs::copy(&path, &dst) {
